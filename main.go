@@ -34,9 +34,9 @@ func main() {
 	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, time.Second*30)
 	// pass to controller
 	go kubeInformerFactory.Start(stopCh)
-	// if err = controller.Run(2, stopCh); err != nil {
-	// 	glog.Fatalf("Error running controller: %s", err.Error())
-	// }
+	if err = controller.Run(2, stopCh); err != nil {
+		glog.Fatalf("Error running controller: %s", err.Error())
+	}
 	<-stopCh
 }
 
