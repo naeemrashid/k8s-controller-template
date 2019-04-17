@@ -19,6 +19,10 @@ import (
 	"k8s.io/client-go/util/workqueue"
 )
 
+// This example is about k8s Deployment, but it could be any kubernetes resource e.g statefulset, ingress, secrets, configmaps etc.
+// Controller establishes a basic bare bone structure to implement more complex logic to control and respond to kubernetes
+// object lifecycle events.
+
 const controllerAgentName = "ControllerTemplate"
 
 const (
@@ -28,9 +32,6 @@ const (
 	MessageResourceSynced = "Resource<name> synced successfully"
 )
 
-// This example is about k8s Deployment, but it could be any kubernetes resource e.g statefulset, ingress, secrets, configmaps etc.
-// Controller establishes a basic bare bone structure to implement more complex logic to control and respond to kubernetes
-// object lifecycle events.
 type Controller struct {
 	name             string
 	namespace        string
@@ -39,6 +40,12 @@ type Controller struct {
 	deploymentSynced cache.InformerSynced
 	workqueue        workqueue.RateLimitingInterface
 	recorder         record.EventRecorder
+}
+type Event struct {
+	key          string
+	eventType    string
+	namespace    string
+	resourceType string
 }
 
 func NewController(
@@ -61,26 +68,9 @@ func NewController(
 	}
 	glog.Info("Setting up event handlers")
 	deploymentInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
-			// Object is newly created.
-			// Perform custom logic
-			controller.createEvent(obj)
-		},
-		UpdateFunc: func(old, new interface{}) {
-			newDep := new.(*appsv1.Deployment)
-			oldDep := new.(*appsv1.Deployment)
-			if newDep.ResourceVersion == oldDep.ResourceVersion {
-				return
-			}
-			// Object is been updated.
-			// Perform custom logic
-			controller.updateEvent(new)
-		},
-		DeleteFunc: func(obj interface{}) {
-			// object is been deleted.
-			// Perform custom logic
-			controller.deleteEvent(obj)
-		},
+		AddFunc:    controller.Create,
+		UpdateFunc: controller.Update,
+		DeleteFunc: controller.Delete,
 	})
 	return controller
 }
@@ -94,25 +84,42 @@ func (c *Controller) enqueue(obj interface{}) {
 	c.workqueue.AddRateLimited(key)
 }
 
-// Perform custom logic on object creation event.
-func (c *Controller) createEvent(obj interface{}) {
-
-	// enqueue object after performing operations.
-	c.enqueue(obj)
+func (c *Controller) Create(obj interface{}) {
+	var event Event
+	key, err := cache.MetaNamespaceKeyFunc(obj)
+	if err != nil {
+		return
+	}
+	event.key = key
+	event.eventType = "create"
+	c.enqueue(event)
 }
 
-// Perform custom logic on object delete event.
-func (c *Controller) deleteEvent(obj interface{}) {
-
-	// enqueue object after performing operations.
-	c.enqueue(obj)
+func (c *Controller) Delete(obj interface{}) {
+	var event Event
+	key, err := cache.MetaNamespaceKeyFunc(obj)
+	if err != nil {
+		return
+	}
+	event.key = key
+	event.eventType = "delete"
+	c.enqueue(event)
 }
+func (c *Controller) Update(old, new interface{}) {
+	var event Event
+	newDep := new.(*appsv1.Deployment)
+	oldDep := new.(*appsv1.Deployment)
+	if newDep.ResourceVersion == oldDep.ResourceVersion {
+		return
+	}
+	key, err := cache.MetaNamespaceKeyFunc(new)
+	if err != nil {
+		return
+	}
+	event.key = key
+	event.eventType = "update"
+	c.enqueue(event)
 
-// perform custom logic on object update event.
-func (c *Controller) updateEvent(obj interface{}) {
-
-	// enqueue object after performing operations.
-	c.enqueue(obj)
 }
 
 func (c *Controller) Run(threadiness int, stopCh <-chan struct{}) error {
@@ -140,18 +147,18 @@ func (c *Controller) processNextWorkItem() bool {
 
 	err := func(obj interface{}) error {
 		defer c.workqueue.Done(obj)
-		var key string
+		var event Event
 		var ok bool
-		if key, ok = obj.(string); !ok {
-			c.workqueue.Forget(obj)
-			runtime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
+		if event, ok = obj.(Event); !ok {
+			c.workqueue.Forget(event)
+			runtime.HandleError(fmt.Errorf("expected event (of type Event) in workqueue but got %#v", event))
 			return nil
 		}
-		if err := c.syncHandler(key); err != nil {
-			return fmt.Errorf("error syncing '%s': %s", key, err.Error())
+		if err := c.takeAction(event); err != nil {
+			return fmt.Errorf("error syncing '%s': %s", event, err.Error())
 		}
-		c.workqueue.Forget(obj)
-		glog.Infof("Successfully synced '%s'", key)
+		c.workqueue.Forget(event)
+		glog.Infof("Successfully synced '%s'", event)
 		return nil
 	}(obj)
 
@@ -163,7 +170,30 @@ func (c *Controller) processNextWorkItem() bool {
 	return true
 }
 
-// Sync resource, this function should be called after update, delete, create event.
-func (c *Controller) syncHandler(key string) error {
+func (c *Controller) takeAction(event Event) error {
+
+	switch event.eventType {
+	case "create":
+		c.ObjectCreated(event.key)
+	case "update":
+		c.ObjectUpdated(event.key)
+	case "delete":
+		c.ObjectDeleted(event.key)
+	}
+	return nil
+}
+
+// ObjectCreated performs logic to create event.
+func (c *Controller) ObjectCreated(key string) error {
+	return nil
+}
+
+// ObjectUpdated performs logic to create event.
+func (c *Controller) ObjectUpdated(key string) error {
+	return nil
+}
+
+// ObjectDeleted performs logic to create event.
+func (c *Controller) ObjectDeleted(key string) error {
 	return nil
 }
