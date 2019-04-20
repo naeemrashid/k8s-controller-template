@@ -1,5 +1,5 @@
 all: push
-TAG = debian
+TAG = latest
 PREFIX = operator-template
 build:
 	CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags '-w' -o controller-template .
